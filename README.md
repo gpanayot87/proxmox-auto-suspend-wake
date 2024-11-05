@@ -34,7 +34,7 @@ Installation & Usage
 
     bash
 
-wget <URL_TO_YOUR_GITHUB_REPO>/setup_auto_suspend_wake.sh
+wget https://github.com/gpanayot87/proxmox-auto-suspend-wake/blob/main/proxmox-auto-suspend-wake.sh
 chmod +x setup_auto_suspend_wake.sh
 
 Run the Script:
