@@ -230,7 +230,7 @@ update_times() {
 
 # Function to edit the tone and duration
 edit_tone_time() {
-    clear_screen
+clear_screen
     echo "Editing tone and beep settings..."
 
     # Display current tone and beep settings
@@ -262,8 +262,8 @@ edit_tone_time() {
             # Validate number of beeps
             if [[ "$sleep_beeps" =~ ^[1-5]$ ]] && [[ "$wake_beeps" =~ ^[1-5]$ ]]; then
                 # Update number of beeps
-                SLEEP_BEEPS=$sleep_beeps
-                WAKE_BEEPS=$wake_beeps
+                sed -i "s/sleep_beeps=.*/sleep_beeps=$sleep_beeps/" /usr/local/bin/proxmox-auto-suspend-wake.settings
+                sed -i "s/wake_beeps=.*/wake_beeps=$wake_beeps/" /usr/local/bin/proxmox-auto-suspend-wake.settings
             else
                 echo "Invalid number of beeps. Please use a number between 1 and 5."
                 return
@@ -277,8 +277,8 @@ edit_tone_time() {
             # Validate tone frequency and duration
             if [[ "$tone_freq" =~ ^[0-9]+$ ]] && [[ "$beep_duration" =~ ^[0-9]+$ ]]; then
                 # Update tone frequency and duration
-                TONE_FREQ=$tone_freq
-                BEEP_DURATION=$beep_duration
+                sed -i "s/tone_freq=.*/tone_freq=$tone_freq/" /usr/local/bin/proxmox-auto-suspend-wake.settings
+                sed -i "s/beep_duration=.*/beep_duration=$beep_duration/" /usr/local/bin/proxmox-auto-suspend-wake.settings
             else
                 echo "Invalid tone frequency or duration. Please use a positive integer."
                 return
@@ -291,7 +291,7 @@ edit_tone_time() {
             # Validate beep delay
             if [[ "$beep_delay" =~ ^[0-9]+$ ]]; then
                 # Update beep delay
-                BEEP_DELAY=$beep_delay
+                sed -i "s/beep_delay=.*/beep_delay=$beep_delay/" /usr/local/bin/proxmox-auto-suspend-wake.settings
             else
                 echo "Invalid beep delay. Please use a positive integer."
                 return
@@ -303,23 +303,15 @@ edit_tone_time() {
             ;;
     esac
 
-    # Update settings file
-    SETTINGS_FILE="/usr/local/bin/proxmox-auto-suspend-wake.settings"
-    sed -i "s/tone_freq=.*/tone_freq=$TONE_FREQ/" "$SETTINGS_FILE"
-    sed -i "s/beep_duration=.*/beep_duration=$BEEP_DURATION/" "$SETTINGS_FILE"
-    sed -i "s/sleep_beeps=.*/sleep_beeps=$SLEEP_BEEPS/" "$SETTINGS_FILE"
-    sed -i "s/wake_beeps=.*/wake_beeps=$WAKE_BEEPS/" "$SETTINGS_FILE"
-    sed -i "s/beep_delay=.*/beep_delay=$BEEP_DELAY/" "$SETTINGS_FILE"
-
-      # Update systemd service
+    # Update systemd service
     SYSTEMD_SERVICE="/etc/systemd/system/proxmox-suspend.service"
-    sed -i "s/ToneFrequency=.*/ToneFrequency=$TONE_FREQ/" "$SYSTEMD_SERVICE"
-    sed -i "s/BeepDuration=.*/BeepDuration=$BEEP_DURATION/" "$SYSTEMD_SERVICE"
-    sed -i "s/SleepBeeps=.*/SleepBeeps=$SLEEP_BEEPS/" "$SYSTEMD_SERVICE"
-    sed -i "s/WakeBeeps=.*/WakeBeeps=$WAKE_BEEPS/" "$SYSTEMD_SERVICE"
-    sed -i "s/BeepDelay=.*/BeepDelay=$BEEP_DELAY/" "$SYSTEMD_SERVICE"
+    sed -i "s/ToneFrequency=.*/ToneFrequency=$(grep -Po "tone_freq=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2)/" "$SYSTEMD_SERVICE"
+    sed -i "s/BeepDuration=.*/BeepDuration=$(grep -Po "beep_duration=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2)/" "$SYSTEMD_SERVICE"
+    sed -i "s/SleepBeeps=.*/SleepBeeps=$(grep -Po "sleep_beeps=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2)/" "$SYSTEMD_SERVICE"
+    sed -i "s/WakeBeeps=.*/WakeBeeps=$(grep -Po "wake_beeps=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2)/" "$SYSTEMD_SERVICE"
+    sed -i "s/BeepDelay=.*/BeepDelay=$(grep -Po "beep_delay=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2)/" "$SYSTEMD_SERVICE"
 
-    # Reload systemd daemon and restart service
+    # Reload systemd daemon and restart timer
     systemctl daemon-reload
     systemctl restart proxmox-suspend.timer
 }
