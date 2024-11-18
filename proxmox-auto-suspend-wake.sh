@@ -7,12 +7,9 @@ clear_screen() {
 
 # Function to display a green box with script name and summary
 display_prompt_screen() {
-    clear_screen
-    echo -e "\033[0;32m"  # Set text color to green
-    echo "+---------------------------------------------------------+"
-    echo "|            Proxmox Auto Suspend and Wake Script         |"
-    echo "+---------------------------------------------------------+"
-    echo -e "\033[0m"  # Reset color to default
+    echo -e "\e[32m+---------------------------------------------------------+\e[0m"
+    echo -e "\e[32m|            Proxmox Auto Suspend and Wake Script         |\e[0m"
+    echo -e "\e[32m+---------------------------------------------------------+\e[0m"
     echo "This script automates the process of suspending your Proxmox system at a specified time,"
     echo "waking it up at a later time, and optionally playing beeps before suspending and waking up."
     echo
@@ -31,44 +28,24 @@ display_prompt_screen() {
 install_actions() {
     echo "Starting the installation process..."
 
-    # Ask for suspend time
-    echo "Please enter the suspend time (HH:MM):"
-    read sleep_time
-    echo "You have chosen to suspend the system at $sleep_time."
+    # Prompt for suspend and wake times
+    read -p "Please enter the suspend time (HH:MM): " sleep_time
+    echo "Suspend time set to $sleep_time."
+    
+    read -p "Please enter the wake up time (HH:MM): " wake_time
+    echo "Wake up time set to $wake_time."
 
-    # Ask for wake time
-    echo "Please enter the wake up time (HH:MM):"
-    read wake_time
-    echo "You have chosen the wake up time at $wake_time."
+    # Beep settings
+    if read -p "Do you want beep notifications? (Y/N) " -r && [[ $REPLY =~ ^[Yy]$ ]]; then
+        read -p "How many beeps on sleep (1-5)? " sleep_beeps
+        read -p "How many beeps on wake (1-5)? " wake_beeps
+        read -p "Enter the beep frequency (Hz, e.g. 1000): " tone_freq
+        read -p "Enter the beep duration (ms, e.g. 300): " beep_duration
 
-    # Ask if user wants beeps
-    echo "Do you want beep notifications? (Y/N)"
-    read -r beep_response
-    if [[ "$beep_response" =~ ^[Yy]$ ]]; then
-        # Ask for the number of beeps for sleep and wake
-        echo "How many beeps on sleep (1-5)?"
-        read sleep_beeps
-        echo "You have chosen $sleep_beeps beeps for sleep."
-
-        echo "How many beeps on wake (1-5)?"
-        read wake_beeps
-        echo "You have chosen $wake_beeps beeps for wake."
-
-        # Ask for tone frequency and duration
-        echo "Enter the tone frequency for the beeps (Hz, e.g. 1000):"
-        read tone_freq
-        echo "You have chosen a frequency of $tone_freq Hz."
-
-        echo "Enter the duration for the beeps (ms, e.g. 300):"
-        read beep_duration
-        echo "You have chosen a duration of $beep_duration ms."
-
-        # Play beep sounds for user confirmation
         echo "Playing beep sound for sleep ($sleep_beeps times):"
         play_beep "$tone_freq" "$beep_duration" "$sleep_beeps"
 
-        read -p "Do you want to continue with these settings? (Y/N) " confirm
-        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        if ! read -p "Continue with these settings? (Y/N) " -r || [[ ! $REPLY =~ ^[Yy]$ ]]; then
             echo "Exiting installation."
             return
         fi
@@ -76,8 +53,7 @@ install_actions() {
         echo "Playing beep sound for wake ($wake_beeps times):"
         play_beep "$tone_freq" "$beep_duration" "$wake_beeps"
 
-        read -p "Do you want to continue with these settings? (Y/N) " confirm
-        if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        if ! read -p "Continue with these settings? (Y/N) " -r || [[ ! $REPLY =~ ^[Yy]$ ]]; then
             echo "Exiting installation."
             return
         fi
@@ -88,70 +64,75 @@ install_actions() {
         beep_duration=300
     fi
 
-    # Paths to the scripts
+    # Script paths
     SUSPEND_SCRIPT="/usr/local/bin/suspend_and_set_wakealarm.sh"
     WAKEUP_BEEP_SCRIPT="/usr/local/bin/wakeup_beep.sh"
 
-    # Create suspend and wakeup scripts
-    echo "Creating suspend script at $SUSPEND_SCRIPT"
-    echo "#!/bin/bash" > "$SUSPEND_SCRIPT"
-    echo "echo 'Suspending system...'" >> "$SUSPEND_SCRIPT"
-    echo "sleep 1" >> "$SUSPEND_SCRIPT"
-    echo "echo 'System Suspended'" >> "$SUSPEND_SCRIPT"
-    echo "echo \$(date +%s -d $wake_time) > /sys/class/rtc/rtc0/wakealarm" >> "$SUSPEND_SCRIPT"
-    echo "echo 'Setting wakeup alarm for $wake_time'" >> "$SUSPEND_SCRIPT"
-    echo "systemctl suspend" >> "$SUSPEND_SCRIPT"
+    # Create suspend script
+    cat <<EOF > "$SUSPEND_SCRIPT"
+#!/bin/bash
+echo 'Suspending system...'
+sleep 1
+echo 'System Suspended'
+echo \$(date +%s -d $wake_time) > /sys/class/rtc/rtc0/wakealarm
+echo 'Setting wakeup alarm for $wake_time'
+systemctl suspend
+EOF
     chmod +x "$SUSPEND_SCRIPT"
 
     # Create wakeup beep script
-    echo "Creating wakeup beep script at $WAKEUP_BEEP_SCRIPT"
-    echo "#!/bin/bash" > "$WAKEUP_BEEP_SCRIPT"
-    echo "if [ $wake_beeps -gt 0 ]; then" >> "$WAKEUP_BEEP_SCRIPT"
-    for ((i=0; i<wake_beeps; i++)); do
-        echo "  beep -f $tone_freq -l $beep_duration" >> "$WAKEUP_BEEP_SCRIPT"
+    cat <<EOF > "$WAKEUP_BEEP_SCRIPT"
+#!/bin/bash
+if (( $wake_beeps > 0 )); then
+    for ((i=0; i<$wake_beeps; i++)); do
+        beep -f $tone_freq -l $beep_duration
     done
-    echo "fi" >> "$WAKEUP_BEEP_SCRIPT"
+fi
+EOF
     chmod +x "$WAKEUP_BEEP_SCRIPT"
 
-    # Create systemd service and timer for suspend and wakeup
-    echo "Creating systemd service and timer files for suspend and wakeup."
-    echo "[Unit]" > /etc/systemd/system/proxmox-suspend.service
-    echo "Description=Automatically suspend the system and set wake alarm" >> /etc/systemd/system/proxmox-suspend.service
-    echo "[Service]" >> /etc/systemd/system/proxmox-suspend.service
-    echo "ExecStart=$SUSPEND_SCRIPT" >> /etc/systemd/system/proxmox-suspend.service
-    echo "Type=oneshot" >> /etc/systemd/system/proxmox-suspend.service
+    # Create and enable systemd service and timer
+    cat <<EOF > /etc/systemd/system/proxmox-suspend.service
+[Unit]
+Description=Automatically suspend the system and set wake alarm
 
-    echo "[Install]" >> /etc/systemd/system/proxmox-suspend.service
-    echo "WantedBy=multi-user.target" >> /etc/systemd/system/proxmox-suspend.service
+[Service]
+ExecStart=$SUSPEND_SCRIPT
+Type=oneshot
 
-    echo "[Unit]" > /etc/systemd/system/proxmox-suspend.timer
-    echo "Description=Timer to run the proxmox-suspend service at $sleep_time" >> /etc/systemd/system/proxmox-suspend.timer
-    echo "[Timer]" >> /etc/systemd/system/proxmox-suspend.timer
-    echo "OnCalendar=$sleep_time" >> /etc/systemd/system/proxmox-suspend.timer
-    echo "Persistent=true" >> /etc/systemd/system/proxmox-suspend.timer
-    echo "[Install]" >> /etc/systemd/system/proxmox-suspend.timer
-    echo "WantedBy=timers.target" >> /etc/systemd/system/proxmox-suspend.timer
+[Install]
+WantedBy=multi-user.target
+EOF
 
-    echo "[Unit]" > /etc/systemd/system/wakeup-beep.service
-    echo "Description=Play beep sound when the system wakes up" >> /etc/systemd/system/wakeup-beep.service
-    echo "[Service]" >> /etc/systemd/system/wakeup-beep.service
-    echo "ExecStart=$WAKEUP_BEEP_SCRIPT" >> /etc/systemd/system/wakeup-beep.service
-    echo "Type=oneshot" >> /etc/systemd/system/wakeup-beep.service
+    cat <<EOF > /etc/systemd/system/proxmox-suspend.timer
+[Unit]
+Description=Timer to run the proxmox-suspend service at $sleep_time
 
-    echo "[Install]" >> /etc/systemd/system/wakeup-beep.service
-    echo "WantedBy=multi-user.target" >> /etc/systemd/system/wakeup-beep.service
+[Timer]
+OnCalendar=$sleep_time
+Persistent=true
 
-    # Reload systemd to recognize the new services and timers
+[Install]
+WantedBy=timers.target
+EOF
+
+    cat <<EOF > /etc/systemd/system/wakeup-beep.service
+[Unit]
+Description=Play beep sound when the system wakes up
+
+[Service]
+ExecStart=$WAKEUP_BEEP_SCRIPT
+Type=oneshot
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Reload systemd and enable services
     systemctl daemon-reload
-    systemctl enable proxmox-suspend.service
-    systemctl enable proxmox-suspend.timer
-    systemctl enable wakeup-beep.service
+    systemctl enable --now proxmox-suspend.service proxmox-suspend.timer wakeup-beep.service
 
-    # Start the timer
-    systemctl start proxmox-suspend.timer
-    systemctl start wakeup-beep.service
-
-    echo "System successfully configured for automatic suspend at $sleep_time and wake at $wake_time with beep notifications."
+    echo "System configured for automatic suspend at $sleep_time and wake at $wake_time with beep notifications."
 }
 
 
@@ -160,36 +141,38 @@ remove_actions() {
     echo "Removing all scheduled actions..."
 
     # Disable and remove systemd services and timers
-    systemctl stop proxmox-suspend.timer
-    systemctl disable proxmox-suspend.timer
-    systemctl stop proxmox-suspend.service
-    systemctl disable proxmox-suspend.service
-    systemctl stop wakeup-beep.service
-    systemctl disable wakeup-beep.service
-    rm -f /etc/systemd/system/proxmox-suspend.timer
-    rm -f /etc/systemd/system/proxmox-suspend.service
-    rm -f /etc/systemd/system/wakeup-beep.service
+    systemctl stop proxmox-suspend.timer proxmox-suspend.service wakeup-beep.service
+    systemctl disable proxmox-suspend.timer proxmox-suspend.service wakeup-beep.service
+    rm -f /etc/systemd/system/{proxmox-suspend.timer,proxmox-suspend.service,wakeup-beep.service}
 
     echo "Removal completed successfully."
 }
 
 # Function to update the times
 update_times() {
-    echo "Updating the suspend and wake times..."
+    echo "Updating suspend and wake times..."
 
-    # Get new times from the user
-    read -p "Enter the new suspend time (in HH:MM format): " suspend_time
-    read -p "Enter the new wake-up time (in HH:MM format): " wake_time
+    # Get and validate new times from the user
+    read -p "Enter new suspend time (HH:MM): " suspend_time
+    read -p "Enter new wake-up time (HH:MM): " wake_time
 
-    # Modify systemd timers with new times (details from previous scripts)
-    # Update systemd service and timers
-    systemctl daemon-reload
-    systemctl restart proxmox-suspend.timer
-
-    echo "Times updated successfully."
+    # Efficiently update systemd timers
+    if [[ "$suspend_time" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]] && [[ "$wake_time" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+        sed -i "s/OnCalendar=.*/OnCalendar=$suspend_time/" /etc/systemd/system/proxmox-suspend.timer
+        echo "$(date +%s -d "$wake_time")" > /sys/class/rtc/rtc0/wakealarm
+        systemctl daemon-reload
+        systemctl restart proxmox-suspend.timer
+        echo "Times updated successfully."
+    else
+        echo "Invalid time format. Please use HH:MM."
+    fi
 }
 
 # Function to edit the tone and duration
+    # This function allows the user to edit the beep tone frequency and duration for both suspension and wake-up events.
+    # It first provides an option to hear sample beep sounds before setting them.
+    # Then, it prompts the user to input custom frequencies and durations for the suspend and wake-up tones.
+    # Finally, it updates the configurations accordingly with the provided values.
 edit_tone_time() {
     echo "Editing the tone and duration..."
 
@@ -218,17 +201,81 @@ edit_tone_time() {
 
 # Function to see the status
 see_status() {
-    echo "Current status of the services and timers:"
-    systemctl status proxmox-suspend.service
-    systemctl status proxmox-suspend.timer
-    systemctl status wakeup-beep.service
+    echo "Fetching current status of Proxmox Suspend & Wake automation..."
 
-    # Display countdown until suspend
-    current_time=$(date +%s)
-    next_suspend_time=$(date +%s -d "$(systemctl show -p ActiveEnterTimestamp --value proxmox-suspend.timer)")
-    time_left=$((next_suspend_time - current_time))
-    echo "Time left until next suspend: $(($time_left / 3600)) hours, $((($time_left % 3600) / 60)) minutes, $(($time_left % 60)) seconds."
+    # Check the status of services
+    for service in proxmox-suspend.service proxmox-suspend.timer wakeup-beep.service; do
+        statuses+=($(systemctl is-active "$service" 2>/dev/null || echo "unknown"))
+    done
+
+    # Fetch active suspend and wake times
+    suspend_time=$(grep -Po 'OnCalendar=\K.*' /etc/systemd/system/proxmox-suspend.timer 2>/dev/null || echo "Unavailable")
+
+    # Fetch the current wake-up alarm time
+    wake_alarm_time=$(< /sys/class/rtc/rtc0/wakealarm 2>/dev/null || echo "0")
+    wake_time=$(date -d @"$wake_alarm_time" +"%H:%M" 2>/dev/null || echo "Unavailable")
+
+    # Fetch beep counts for suspend and wakeup
+    for pattern in 'suspend_beeps=\K[0-9]+' 'wakeup_beeps=\K[0-9]+'; do
+        beep_counts+=($(grep -Po "$pattern" /usr/local/bin/proxmox-auto-suspend-wake.sh 2>/dev/null || echo "Unavailable"))
+    done
+
+    # Current time in seconds
+    current_time=$(date +%s 2>/dev/null || echo "0")
+
+    # Time until next suspend
+    next_suspend_time=$(systemctl show proxmox-suspend.timer --property=NextElapseUSecRealtime --value 2>/dev/null || echo "0")
+    next_suspend_epoch=$(date +%s -d "$next_suspend_time" 2>/dev/null || echo "0")
+    time_until_suspend=$((next_suspend_epoch > current_time ? next_suspend_epoch - current_time : -1))
+
+    # Time until next wake
+    time_until_wake=$((wake_alarm_time > current_time ? wake_alarm_time - current_time : -1))
+
+    # Format time left for suspend and wake-up
+    format_time() {
+        (( $1 > 0 )) && echo "$(($1 / 3600)) Hours, $((($1 % 3600) / 60)) Minutes" || echo "Time has passed or not set."
+    }
+
+    # Display service statuses, times, and beep counts
+    echo
+    echo "------------------------------------"
+    echo "* Services:"
+    echo "  - Suspend Service: ${statuses[0]^}"
+    echo "  - Suspend Timer: ${statuses[1]^}"
+    echo "  - Wakeup Beep Service: ${statuses[2]^}"
+    echo "* Active Suspend Time: ${suspend_time:-Unavailable}"
+    echo "* Active Wake Up Time: ${wake_time:-Unavailable}"
+    echo "* Time until next Suspend: $(format_time "$time_until_suspend")"
+    echo "* Time until next Wake: $(format_time "$time_until_wake")"
+    echo "* Active Beep Counts:"
+    echo "  - Beeps on Suspend: ${beep_counts[0]:-Unavailable}"
+    echo "  - Beeps on Wakeup: ${beep_counts[1]:-Unavailable}"
+    echo "------------------------------------"
+    echo
+
+    # Check for errors and prompt to re-run install
+    if [[ "${statuses[0]}" != "active" || "${statuses[1]}" != "active" || "${statuses[2]}" != "active" ]]; then
+        echo "One or more services are inactive or unhealthy."
+        read -p "Do you want to re-run the install script to fix it? (Y/N): " response
+        [[ "$response" =~ ^[Yy]$ ]] && install_actions || echo "Skipping re-install. You may encounter issues with the automation."
+    fi
 }
+
+# Function to play beep sounds
+play_beep() {
+    local tone_freq=$1
+    local beep_duration=$2
+    local beep_count=$3
+
+    echo "Playing beep sound with frequency $tone_freq Hz, duration $beep_duration ms, and $beep_count beeps."
+    for ((i=0; i<beep_count; i++)); do
+        beep -f "$tone_freq" -l "$beep_duration" &
+        sleep 0.01
+    done
+    wait
+}
+
+
 
 # Main script loop
 while true; do
