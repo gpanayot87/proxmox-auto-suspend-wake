@@ -37,6 +37,15 @@ install_actions() {
 
     # Beep settings
     if read -p "Do you want beep notifications? (Y/N) " -r && [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Check if beep package is installed, if not proceeds to install and continues configuration
+        echo "Checking for Beep package..."
+        if ! dpkg -s beep &> /dev/null; then
+        echo "Beep package is not installed. Installing..."
+        apt-get update && apt-get install -y beep
+        echo "Beep package has been installed. Continuing configuration."
+        fi
+        
+        echo "=== Beep Configuration ===" 
         read -p "How many beeps on sleep (1-5)? " sleep_beeps
         read -p "How many beeps on wake (1-5)? " wake_beeps
         read -p "Enter the beep frequency (Hz, e.g. 1000): " tone_freq
@@ -63,6 +72,15 @@ install_actions() {
         tone_freq=1000
         beep_duration=300
     fi
+# Save user settings to file
+    SETTINGS_FILE="/usr/local/bin/proxmox-auto-suspend-wake.settings"
+    echo "Saving settings to $SETTINGS_FILE..."
+    echo "suspend_time=$sleep_time" > "$SETTINGS_FILE"
+    echo "wake_time=$wake_time" >> "$SETTINGS_FILE"
+    echo "sleep_beeps=$sleep_beeps" >> "$SETTINGS_FILE"
+    echo "wake_beeps=$wake_beeps" >> "$SETTINGS_FILE"
+    echo "tone_freq=$tone_freq" >> "$SETTINGS_FILE"
+    echo "beep_duration=$beep_duration" >> "$SETTINGS_FILE"
 
     # Script paths
     SUSPEND_SCRIPT="/usr/local/bin/suspend_and_set_wakealarm.sh"
@@ -156,12 +174,19 @@ update_times() {
     read -p "Enter new suspend time (HH:MM): " suspend_time
     read -p "Enter new wake-up time (HH:MM): " wake_time
 
-    # Efficiently update systemd timers
+    # Validate time format
     if [[ "$suspend_time" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]] && [[ "$wake_time" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+        # Update systemd timers
         sed -i "s/OnCalendar=.*/OnCalendar=$suspend_time/" /etc/systemd/system/proxmox-suspend.timer
         echo "$(date +%s -d "$wake_time")" > /sys/class/rtc/rtc0/wakealarm
         systemctl daemon-reload
         systemctl restart proxmox-suspend.timer
+
+        # Update settings file
+        SETTINGS_FILE="/usr/local/bin/proxmox-auto-suspend-wake.settings"
+        sed -i "s/suspend_time=.*/suspend_time=$suspend_time/" "$SETTINGS_FILE"
+        sed -i "s/wake_time=.*/wake_time=$wake_time/" "$SETTINGS_FILE"
+
         echo "Times updated successfully."
     else
         echo "Invalid time format. Please use HH:MM."
@@ -169,96 +194,114 @@ update_times() {
 }
 
 # Function to edit the tone and duration
-    # This function allows the user to edit the beep tone frequency and duration for both suspension and wake-up events.
-    # It first provides an option to hear sample beep sounds before setting them.
-    # Then, it prompts the user to input custom frequencies and durations for the suspend and wake-up tones.
-    # Finally, it updates the configurations accordingly with the provided values.
 edit_tone_time() {
-    echo "Editing the tone and duration..."
+    echo "Editing tone and beep settings..."
 
-    # Ask if the user wants to hear the beep sounds before proceeding
-    read -p "Do you want to hear the beep sounds before setting them? (Y/N): " answer
-    if [[ "$answer" =~ ^[Yy]$ ]]; then
-        echo "Testing the beep sound for suspending..."
-        # Play beep for suspend
-        beep -f 1000 -l 500  # Example: 1000Hz for 500ms
-        sleep 1
-        echo "Testing the beep sound for waking up..."
-        # Play beep for wakeup
-        beep -f 1000 -l 500  # Example: 1000Hz for 500ms
-        sleep 1
+    # Get and validate new tone frequency and duration from the user
+    read -p "Enter new tone frequency (Hz, e.g. 1000): " tone_freq
+    read -p "Enter new tone duration (ms, e.g. 300): " beep_duration
+
+    # Validate tone frequency and duration
+    if [[ "$tone_freq" =~ ^[0-9]+$ ]] && [[ "$beep_duration" =~ ^[0-9]+$ ]]; then
+        # Update tone frequency and duration
+        TONE_FREQ=$tone_freq
+        BEEP_DURATION=$beep_duration
+
+        # Ask user if they want to adjust the number of beeps
+        read -p "Do you want to adjust the number of beeps? (Y/N) " -r
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            # Get and validate new number of beeps from the user
+            read -p "Enter new number of beeps on suspend (1-5): " sleep_beeps
+            read -p "Enter new number of beeps on wake (1-5): " wake_beeps
+
+            # Validate number of beeps
+            if [[ "$sleep_beeps" =~ ^[1-5]$ ]] && [[ "$wake_beeps" =~ ^[1-5]$ ]]; then
+                # Update number of beeps
+                SLEEP_BEEPS=$sleep_beeps
+                WAKE_BEEPS=$wake_beeps
+            else
+                echo "Invalid number of beeps. Please use a number between 1 and 5."
+                return
+            fi
+        fi
+
+        # Update settings file
+        SETTINGS_FILE="/usr/local/bin/proxmox-auto-suspend-wake.settings"
+        sed -i "s/tone_freq=.*/tone_freq=$tone_freq/" "$SETTINGS_FILE"
+        sed -i "s/beep_duration=.*/beep_duration=$beep_duration/" "$SETTINGS_FILE"
+        sed -i "s/sleep_beeps=.*/sleep_beeps=$sleep_beeps/" "$SETTINGS_FILE"
+        sed -i "s/wake_beeps=.*/wake_beeps=$wake_beeps/" "$SETTINGS_FILE"
+
+        echo "Tone and beep settings updated successfully."
+    else
+        echo "Invalid tone frequency or duration. Please use a positive integer."
     fi
-
-    # Get user input for tone frequency and duration
-    read -p "Enter the frequency of the tone for suspension (in Hz): " suspend_tone
-    read -p "Enter the duration of the tone for suspension (in ms): " suspend_duration
-    read -p "Enter the frequency of the tone for wake-up (in Hz): " wake_tone
-    read -p "Enter the duration of the tone for wake-up (in ms): " wake_duration
-
-    # Set up beep commands or adjust related configurations as per previous examples
-    echo "Tone and duration updated successfully."
 }
 
 # Function to see the status
+
+# Function to see the status
+# Function to see the status
 see_status() {
     echo "Fetching current status of Proxmox Suspend & Wake automation..."
+
+    # Read settings from file
+    SETTINGS_FILE="/usr/local/bin/proxmox-auto-suspend-wake.settings"
+    suspend_time=$(grep -Po "suspend_time=.*" "$SETTINGS_FILE" | cut -d= -f2)
+    wake_time=$(grep -Po "wake_time=.*" "$SETTINGS_FILE" | cut -d= -f2)
+    tone_freq=$(grep -Po "tone_freq=.*" "$SETTINGS_FILE" | cut -d= -f2)
+    beep_duration=$(grep -Po "beep_duration=.*" "$SETTINGS_FILE" | cut -d= -f2)
+    sleep_beeps=$(grep -Po "sleep_beeps=.*" "$SETTINGS_FILE" | cut -d= -f2)
+    wake_beeps=$(grep -Po "wake_beeps=.*" "$SETTINGS_FILE" | cut -d= -f2)
 
     # Check the status of services
     for service in proxmox-suspend.service proxmox-suspend.timer wakeup-beep.service; do
         statuses+=($(systemctl is-active "$service" 2>/dev/null || echo "unknown"))
     done
 
-    # Fetch active suspend and wake times
-    suspend_time=$(grep -Po 'OnCalendar=\K.*' /etc/systemd/system/proxmox-suspend.timer 2>/dev/null || echo "Unavailable")
-
-    # Fetch the current wake-up alarm time
-    wake_alarm_time=$(< /sys/class/rtc/rtc0/wakealarm 2>/dev/null || echo "0")
-    wake_time=$(date -d @"$wake_alarm_time" +"%H:%M" 2>/dev/null || echo "Unavailable")
-
-    # Fetch beep counts for suspend and wakeup
-    for pattern in 'suspend_beeps=\K[0-9]+' 'wakeup_beeps=\K[0-9]+'; do
-        beep_counts+=($(grep -Po "$pattern" /usr/local/bin/proxmox-auto-suspend-wake.sh 2>/dev/null || echo "Unavailable"))
-    done
-
     # Current time in seconds
-    current_time=$(date +%s 2>/dev/null || echo "0")
+    current_time=$(date +%s)
 
     # Time until next suspend
-    next_suspend_time=$(systemctl show proxmox-suspend.timer --property=NextElapseUSecRealtime --value 2>/dev/null || echo "0")
-    next_suspend_epoch=$(date +%s -d "$next_suspend_time" 2>/dev/null || echo "0")
-    time_until_suspend=$((next_suspend_epoch > current_time ? next_suspend_epoch - current_time : -1))
+    next_suspend_time=$(date -d "$suspend_time" +%s)
+    if [ $next_suspend_time -lt $current_time ]; then
+        next_suspend_time=$((next_suspend_time + 86400)) # add 24 hours if suspend time has already passed
+    fi
+    time_until_suspend=$((next_suspend_time - current_time))
 
     # Time until next wake
-    time_until_wake=$((wake_alarm_time > current_time ? wake_alarm_time - current_time : -1))
+    next_wake_time=$(date -d "$wake_time" +%s)
+    if [ $next_wake_time -lt $current_time ]; then
+        next_wake_time=$((next_wake_time + 86400)) # add 24 hours if wake time has already passed
+    fi
+    time_until_wake=$((next_wake_time - current_time))
 
     # Format time left for suspend and wake-up
     format_time() {
         (( $1 > 0 )) && echo "$(($1 / 3600)) Hours, $((($1 % 3600) / 60)) Minutes" || echo "Time has passed or not set."
     }
 
-    # Display service statuses, times, and beep counts
+    # Display settings
     echo
     echo "------------------------------------"
     echo "* Services:"
     echo "  - Suspend Service: ${statuses[0]^}"
     echo "  - Suspend Timer: ${statuses[1]^}"
     echo "  - Wakeup Beep Service: ${statuses[2]^}"
-    echo "* Active Suspend Time: ${suspend_time:-Unavailable}"
-    echo "* Active Wake Up Time: ${wake_time:-Unavailable}"
-    echo "* Time until next Suspend: $(format_time "$time_until_suspend")"
-    echo "* Time until next Wake: $(format_time "$time_until_wake")"
-    echo "* Active Beep Counts:"
-    echo "  - Beeps on Suspend: ${beep_counts[0]:-Unavailable}"
-    echo "  - Beeps on Wakeup: ${beep_counts[1]:-Unavailable}"
-    echo "------------------------------------"
-    echo
+    echo "* Current Settings:"
+    echo "  - Suspend Time: $suspend_time"
+    echo "  - Wake Up Time: $wake_time"
+    echo "  - Tone Frequency: $tone_freq Hz"
+    echo "  - Beep Duration: $beep_duration ms"
+    echo "  - Sleep Beeps: $sleep_beeps"
+    echo "  - Wake Beeps: $wake_beeps"
+    echo "  - Time until next Suspend: $(format_time "$time_until_suspend")"
+    echo "  - Time until next Wake: $(format_time "$time_until_wake")"
 
-    # Check for errors and prompt to re-run install
-    if [[ "${statuses[0]}" != "active" || "${statuses[1]}" != "active" || "${statuses[2]}" != "active" ]]; then
-        echo "One or more services are inactive or unhealthy."
-        read -p "Do you want to re-run the install script to fix it? (Y/N): " response
-        [[ "$response" =~ ^[Yy]$ ]] && install_actions || echo "Skipping re-install. You may encounter issues with the automation."
-    fi
+    echo "------------------------------------"
+    echo "Press 'q' to return to the main menu. If any issue arises, return to the main menu and run the install process again."
+    read -p "Press any key to continue... " -n1 -s
+    echo
 }
 
 # Function to play beep sounds
