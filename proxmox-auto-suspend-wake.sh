@@ -321,7 +321,7 @@ edit_tone_time() {
 
     # Reload systemd daemon and restart service
     systemctl daemon-reload
-    systemctl restart proxmox-suspend.service
+    systemctl restart proxmox-suspend.timer
 }
 
 # Function to see the status
@@ -405,9 +405,9 @@ play_beep() {
 reload_services() {
     echo "Reloading all services..."
     systemctl daemon-reload
-    systemctl restart proxmox-suspend.timer proxmox-suspend.service wakeup-beep.service
+    systemctl restart proxmox-suspend.timer wakeup-beep.service
     echo "Services reloaded successfully."
-    systemctl status proxmox-suspend.timer proxmox-suspend.service wakeup-beep.service
+    systemctl status proxmox-suspend.timer wakeup-beep.service
 }
 
 
