@@ -7,7 +7,6 @@ clear_screen() {
 
 # Function to display a green box with script name and summary
 display_prompt_screen() {
-    clear_screen
     echo -e "\e[32m+---------------------------------------------------------+\e[0m"
     echo -e "\e[32m|            Proxmox Auto Suspend and Wake Script         |\e[0m"
     echo -e "\e[32m+---------------------------------------------------------+\e[0m"
@@ -21,10 +20,10 @@ display_prompt_screen() {
     echo "4. Edit the tone and duration"
     echo "5. See the status"
     echo "6. Quit"
+    echo "7. Reload services"
     echo
     echo -n "Select an option: "
 }
-
 # Function to install the actions
 install_actions() {
     clear_screen
@@ -402,7 +401,14 @@ play_beep() {
     done
     wait
 }
-
+# Function to reload all services
+reload_services() {
+    echo "Reloading all services..."
+    systemctl daemon-reload
+    systemctl restart proxmox-suspend.timer proxmox-suspend.service wakeup-beep.service
+    echo "Services reloaded successfully."
+    systemctl status proxmox-suspend.timer proxmox-suspend.service wakeup-beep.service
+}
 
 
 # Main script loop
@@ -453,6 +459,10 @@ while true; do
         6)
             echo "Quitting..."
             exit 0
+            ;;
+        7)
+            reload_services
+            read -p "Press any key to continue..."
             ;;
         *)
             echo "Invalid choice, please try again."
