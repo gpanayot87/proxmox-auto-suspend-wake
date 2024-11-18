@@ -7,6 +7,7 @@ clear_screen() {
 
 # Function to display a green box with script name and summary
 display_prompt_screen() {
+    clear_screen
     echo -e "\e[32m+---------------------------------------------------------+\e[0m"
     echo -e "\e[32m|            Proxmox Auto Suspend and Wake Script         |\e[0m"
     echo -e "\e[32m+---------------------------------------------------------+\e[0m"
@@ -155,15 +156,36 @@ EOF
 
 
 # Function to remove all actions
+# Function to remove actions
 remove_actions() {
-    echo "Removing all scheduled actions..."
+    echo "Removing Proxmox Suspend & Wake automation..."
 
-    # Disable and remove systemd services and timers
-    systemctl stop proxmox-suspend.timer proxmox-suspend.service wakeup-beep.service
-    systemctl disable proxmox-suspend.timer proxmox-suspend.service wakeup-beep.service
-    rm -f /etc/systemd/system/{proxmox-suspend.timer,proxmox-suspend.service,wakeup-beep.service}
+    # Remove services
+    systemctl stop proxmox-suspend.service
+    systemctl disable proxmox-suspend.service
+    rm /etc/systemd/system/proxmox-suspend.service
+    systemctl daemon-reload
 
-    echo "Removal completed successfully."
+    systemctl stop proxmox-suspend.timer
+    systemctl disable proxmox-suspend.timer
+    rm /etc/systemd/system/proxmox-suspend.timer
+    systemctl daemon-reload
+
+    systemctl stop wakeup-beep.service
+    systemctl disable wakeup-beep.service
+    rm /etc/systemd/system/wakeup-beep.service
+    systemctl daemon-reload
+
+    # Remove settings file
+    rm /usr/local/bin/proxmox-auto-suspend-wake.settings
+
+    # Prompt user to uninstall beep package
+    read -p "Do you want to uninstall the beep package? (Y/N) " -r
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        apt-get remove -y beep
+    fi
+
+    echo "Proxmox Suspend & Wake automation removed successfully."
 }
 
 # Function to update the times
