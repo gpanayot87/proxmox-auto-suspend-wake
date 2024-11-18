@@ -11,7 +11,7 @@ This script automates the process of suspending your Proxmox system at a specifi
 
 ## Installation
 
-To install the script, run the following command in your terminal:
+To execute the script, run the following command in your pve terminal, preferably as root:
 
 ```bash
 bash proxmox-auto-suspend-wake.sh
