@@ -27,6 +27,7 @@ display_prompt_screen() {
 
 # Function to install the actions
 install_actions() {
+    clear_screen
     echo "Starting the installation process..."
 
     # Prompt for suspend and wake times
@@ -230,6 +231,7 @@ update_times() {
 
 # Function to edit the tone and duration
 edit_tone_time() {
+    clear_screen
     echo "Editing tone and beep settings..."
 
     # Display current tone and beep settings
@@ -325,6 +327,7 @@ edit_tone_time() {
 
 # Function to see the status
 see_status() {
+    clear_screen
     echo "Fetching current status of Proxmox Suspend & Wake automation..."
 
     # Read settings from file
