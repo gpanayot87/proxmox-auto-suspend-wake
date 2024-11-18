@@ -190,9 +190,22 @@ remove_actions() {
 
 # Function to update the times
 update_times() {
+    clear_screen
     echo "Updating suspend and wake times..."
 
+    # Display current suspend and wake times
+    echo
+    echo "------------------------------------"
+    echo "|          Current Times          |"
+    echo "------------------------------------"
+    echo "|  Suspend Time: $(grep -Po "suspend_time=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2)  |"
+    echo "|  Wake Time: $(grep -Po "wake_time=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2)  |"
+    echo "------------------------------------"
+    echo
+
+    
     # Get and validate new times from the user
+    echo "Please provide new times for suspend and wake-up:"
     read -p "Enter new suspend time (HH:MM): " suspend_time
     read -p "Enter new wake-up time (HH:MM): " wake_time
 
@@ -219,19 +232,28 @@ update_times() {
 edit_tone_time() {
     echo "Editing tone and beep settings..."
 
-    # Get and validate new tone frequency and duration from the user
-    read -p "Enter new tone frequency (Hz, e.g. 1000): " tone_freq
-    read -p "Enter new tone duration (ms, e.g. 300): " beep_duration
+    # Display current tone and beep settings
+    echo
+    echo "------------------------------------"
+    echo "|          Current Settings         |"
+    echo "------------------------------------"
+    echo "|  Tone Frequency: $(grep -Po "tone_freq=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2) Hz  |"
+    echo "|  Beep Duration: $(grep -Po "beep_duration=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2) ms  |"
+    echo "|  Sleep Beeps: $(grep -Po "sleep_beeps=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2)  |"
+    echo "|  Wake Beeps: $(grep -Po "wake_beeps=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2)  |"
+    echo "|  Beep Delay: $(grep -Po "beep_delay=.*" /usr/local/bin/proxmox-auto-suspend-wake.settings | cut -d= -f2) ms  |"
+    echo "------------------------------------"
+    echo
 
-    # Validate tone frequency and duration
-    if [[ "$tone_freq" =~ ^[0-9]+$ ]] && [[ "$beep_duration" =~ ^[0-9]+$ ]]; then
-        # Update tone frequency and duration
-        TONE_FREQ=$tone_freq
-        BEEP_DURATION=$beep_duration
+    # Ask user which setting to adjust
+    echo "Which setting would you like to adjust?"
+    echo "1. Adjust how many beeps"
+    echo "2. Adjust the tone"
+    echo "3. Add a preferred delay between each beep"
+    read -p "Enter your choice: " choice
 
-        # Ask user if they want to adjust the number of beeps
-        read -p "Do you want to adjust the number of beeps? (Y/N) " -r
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
+    case $choice in
+        1)
             # Get and validate new number of beeps from the user
             read -p "Enter new number of beeps on suspend (1-5): " sleep_beeps
             read -p "Enter new number of beeps on wake (1-5): " wake_beeps
@@ -245,24 +267,62 @@ edit_tone_time() {
                 echo "Invalid number of beeps. Please use a number between 1 and 5."
                 return
             fi
-        fi
+            ;;
+        2)
+            # Get and validate new tone frequency and duration from the user
+            read -p "Enter new tone frequency (Hz, e.g. 1000): " tone_freq
+            read -p "Enter new tone duration (ms, e.g. 300): " beep_duration
 
-        # Update settings file
-        SETTINGS_FILE="/usr/local/bin/proxmox-auto-suspend-wake.settings"
-        sed -i "s/tone_freq=.*/tone_freq=$tone_freq/" "$SETTINGS_FILE"
-        sed -i "s/beep_duration=.*/beep_duration=$beep_duration/" "$SETTINGS_FILE"
-        sed -i "s/sleep_beeps=.*/sleep_beeps=$sleep_beeps/" "$SETTINGS_FILE"
-        sed -i "s/wake_beeps=.*/wake_beeps=$wake_beeps/" "$SETTINGS_FILE"
+            # Validate tone frequency and duration
+            if [[ "$tone_freq" =~ ^[0-9]+$ ]] && [[ "$beep_duration" =~ ^[0-9]+$ ]]; then
+                # Update tone frequency and duration
+                TONE_FREQ=$tone_freq
+                BEEP_DURATION=$beep_duration
+            else
+                echo "Invalid tone frequency or duration. Please use a positive integer."
+                return
+            fi
+            ;;
+        3)
+            # Get and validate new beep delay from the user
+            read -p "Enter new beep delay (ms, e.g. 500): " beep_delay
 
-        echo "Tone and beep settings updated successfully."
-    else
-        echo "Invalid tone frequency or duration. Please use a positive integer."
-    fi
+            # Validate beep delay
+            if [[ "$beep_delay" =~ ^[0-9]+$ ]]; then
+                # Update beep delay
+                BEEP_DELAY=$beep_delay
+            else
+                echo "Invalid beep delay. Please use a positive integer."
+                return
+            fi
+            ;;
+        *)
+            echo "Invalid choice. Please try again."
+            return
+            ;;
+    esac
+
+    # Update settings file
+    SETTINGS_FILE="/usr/local/bin/proxmox-auto-suspend-wake.settings"
+    sed -i "s/tone_freq=.*/tone_freq=$TONE_FREQ/" "$SETTINGS_FILE"
+    sed -i "s/beep_duration=.*/beep_duration=$BEEP_DURATION/" "$SETTINGS_FILE"
+    sed -i "s/sleep_beeps=.*/sleep_beeps=$SLEEP_BEEPS/" "$SETTINGS_FILE"
+    sed -i "s/wake_beeps=.*/wake_beeps=$WAKE_BEEPS/" "$SETTINGS_FILE"
+    sed -i "s/beep_delay=.*/beep_delay=$BEEP_DELAY/" "$SETTINGS_FILE"
+
+      # Update systemd service
+    SYSTEMD_SERVICE="/etc/systemd/system/proxmox-suspend.service"
+    sed -i "s/ToneFrequency=.*/ToneFrequency=$TONE_FREQ/" "$SYSTEMD_SERVICE"
+    sed -i "s/BeepDuration=.*/BeepDuration=$BEEP_DURATION/" "$SYSTEMD_SERVICE"
+    sed -i "s/SleepBeeps=.*/SleepBeeps=$SLEEP_BEEPS/" "$SYSTEMD_SERVICE"
+    sed -i "s/WakeBeeps=.*/WakeBeeps=$WAKE_BEEPS/" "$SYSTEMD_SERVICE"
+    sed -i "s/BeepDelay=.*/BeepDelay=$BEEP_DELAY/" "$SYSTEMD_SERVICE"
+
+    # Reload systemd daemon and restart service
+    systemctl daemon-reload
+    systemctl restart proxmox-suspend.service
 }
 
-# Function to see the status
-
-# Function to see the status
 # Function to see the status
 see_status() {
     echo "Fetching current status of Proxmox Suspend & Wake automation..."
