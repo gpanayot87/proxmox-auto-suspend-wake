@@ -1,76 +1,55 @@
-# proxmox-auto-suspend-wake
-Automated Suspend and Wake Script for Proxmox with Beep Notifications.
+# Proxmox Auto Suspend and Wake Script
 
-Auto Suspend & Wake Script for Proxmox
+This script automates the process of suspending your Proxmox system at a specified time, waking it up at a later time, and optionally playing beep notifications before suspending and waking up.
 
-This script, setup_auto_suspend_wake.sh, is designed to automate the setup of a scheduled suspend (sleep) and wake on a Proxmox server. It provides flexibility for administrators to set preferred suspend and wake times, customize beeping alerts, and automate the Proxmox host's sleep/wake cycle. This setup is ideal for environments where you want to save energy or ensure the server is only online during specific hours.
-Key Features
+## Features
 
-*Automated Scheduling: Easily set a sleep time and wake-up time. The script will create systemd timers and services to manage these cycles.
-*Customizable Beeps: Users can enable or disable beeps and specify the number, tone, and duration of beeps for both suspend and wake events. This provides audio feedback to confirm actions.
-*Persistence: Automatically reloads systemd and enables the timer and services to ensure the schedule persists across reboots.
+- **Automated Suspend and Wake**: Set specific times for your Proxmox system to suspend and wake up.
+- **Beep Notifications**: Optionally play beep sounds before the system suspends and wakes up.
+- **Easy Configuration**: Simple prompts to configure suspend/wake times and beep settings.
+- **Systemd Integration**: Uses systemd services and timers for reliable scheduling.
 
-How It Works
+## Installation
 
-The script performs the following:
+To install the script, run the following command in your terminal:
 
-User Prompts: It asks for:
-        Sleep Time (HH:MM) format.
-        Wake-up Time (HH:MM) format.
-        Whether you want beeps on suspend and wake-up.
-        The beep tone frequency (in Hz) and duration (in milliseconds).
-Creates Scripts and Systemd Units:
-        Suspend Script: Sets the wake alarm time, produces beeps (if enabled), and suspends the system.
-        Wake-Up Beep Script: Produces a beep when the system wakes (if enabled).
-Systemd Setup:
-        Suspend Service: Manages the suspend sequence.
-        Suspend Timer: Triggers the suspend service at the specified time.
-        Wake-Up Beep Service: Triggers the wake-up beep upon resuming.
-Activation: Reloads systemd, enables the services and timers, and starts the suspend timer.
+```bash
+bash proxmox-auto-suspend-wake.sh
+```
 
-Installation & Usage
+Follow the prompts to set your desired suspend and wake times, as well as beep settings.
 
-  Download and Prepare the Script:
+## Usage
 
-    bash
+After installation, the script will create systemd services and timers to manage the suspend and wake actions. You can choose from the following options when you run the script:
 
-wget https://github.com/gpanayot87/proxmox-auto-suspend-wake/blob/main/proxmox-auto-suspend-wake.sh
-chmod +x setup_auto_suspend_wake.sh
+1. **Proceed with the install**: Set up the suspend and wake actions by entering your desired times and beep settings.
+2. **Remove all actions**: Disable and remove the scheduled actions if you no longer want the automation.
+3. **Update the times**: Change the existing suspend and wake times to new values.
+4. **Edit the tone and duration**: Customize the beep tone frequency and duration for both suspension and wake-up events.
+5. **See the status**: Check the current status of the automation, including service statuses and scheduled times.
+6. **Quit**: Exit the script.
 
-Run the Script:
+## Configuration Files
 
-bash
+The script creates the following files:
 
-sudo ./setup_auto_suspend_wake.sh
+- `/usr/local/bin/suspend_and_set_wakealarm.sh`: Script to suspend the system and set the wake alarm.
+- `/usr/local/bin/wakeup_beep.sh`: Script to play beep sounds upon waking.
+- `/etc/systemd/system/proxmox-suspend.service`: Systemd service for suspending the system.
+- `/etc/systemd/system/proxmox-suspend.timer`: Systemd timer to trigger the suspend service.
+- `/etc/systemd/system/wakeup-beep.service`: Systemd service to play beep sounds when waking up.
 
-Follow the Prompts:
+## Requirements
 
-* Enter the desired suspend time and wake-up time in HH
-    format.
- *   Specify if you want a beep before suspend and on wake-up.
-*    Customize beep tone and duration as needed.
+- Proxmox VE
+- `beep` command installed for beep notifications
+- Systemd for managing services and timers
 
-Check Status: After setup, confirm the services and timers are active:
+## License
 
-bash
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-    systemctl status proxmox-suspend.service
-    systemctl status proxmox-suspend.timer
-    systemctl status wakeup-beep.service
+## Contributing
 
-Example Usage
-
-To set the server to suspend at 23:00 and wake at 07:00 with a beep alert:
-
-    Sleep Time: 23:00
-    Wake-Up Time: 07:00
-    Beep on Suspend: Yes, 2 beeps at 1000 Hz for 500 ms each
-    Beep on Wake: Yes, 1 beep at 1000 Hz for 500 ms
-
-Notes
-
-    Beep Requirements: Ensure the beep utility is installed and functioning on your system. This script will attempt to install it if missing.
-    RTC Wake Alarm: This relies on the system’s Real-Time Clock (RTC) to wake up; not all hardware supports wake alarms, so please confirm compatibility.
-    Proxmox Permissions: Run as root or a user with sufficient permissions to modify system services.
-
-Feel free to open an issue if you encounter any problems or have suggestions for improvements!
+Feel free to submit issues or pull requests if you have suggestions or improvements!
