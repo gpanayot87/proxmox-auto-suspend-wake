@@ -8,6 +8,7 @@ This script automates suspending your Proxmox node at a scheduled time, sets an 
 - **RTC wake alarm** is recalculated every suspend run so wake always targets the next valid day/time.
 - **Optional beep notifications** for both pre-suspend and post-resume.
 - **Interactive management menu** to install, remove, and update timings/settings.
+- Installer performs a compatibility purge of older unit/script layouts before recreating the current ones, preventing conflicts after upgrades.
 
 ## Installation
 

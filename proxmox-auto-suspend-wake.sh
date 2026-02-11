@@ -49,6 +49,31 @@ beep_delay=$beep_delay
 EOF_SETTINGS
 }
 
+purge_existing_installation() {
+    local keep_settings=${1:-true}
+
+    echo "Purging existing/legacy Proxmox suspend-wake units and scripts..."
+
+    for unit in proxmox-suspend.timer proxmox-suspend.service wakeup-beep.service; do
+        systemctl disable --now "$unit" >/dev/null 2>&1 || true
+        systemctl reset-failed "$unit" >/dev/null 2>&1 || true
+    done
+
+    rm -f \
+        /etc/systemd/system/proxmox-suspend.timer \
+        /etc/systemd/system/proxmox-suspend.service \
+        /etc/systemd/system/wakeup-beep.service \
+        /usr/local/bin/suspend_and_set_wakealarm.sh \
+        /usr/local/bin/wakeup_beep.sh \
+        /usr/lib/systemd/system-sleep/proxmox-wakeup-beep
+
+    if [[ "$keep_settings" != "true" ]]; then
+        rm -f "$SETTINGS_FILE"
+    fi
+
+    systemctl daemon-reload
+}
+
 play_beep() {
     local freq=$1
     local duration=$2
@@ -207,6 +232,7 @@ install_actions() {
     fi
 
     save_settings
+    purge_existing_installation true
     create_runtime_scripts
     create_systemd_units
 
@@ -216,10 +242,7 @@ install_actions() {
 remove_actions() {
     echo "Removing Proxmox Suspend & Wake automation..."
 
-    systemctl disable --now proxmox-suspend.timer >/dev/null 2>&1 || true
-    rm -f "$SUSPEND_SERVICE" "$SUSPEND_TIMER"
-    rm -f "$SUSPEND_SCRIPT" "$WAKEUP_HOOK_SCRIPT" "$SETTINGS_FILE"
-    systemctl daemon-reload
+    purge_existing_installation false
 
     read -r -p "Do you want to uninstall the beep package? (Y/N) " reply
     if [[ "$reply" =~ ^[Yy]$ ]]; then
@@ -247,6 +270,7 @@ update_times() {
     suspend_time="$new_suspend_time"
     wake_time="$new_wake_time"
     save_settings
+    purge_existing_installation true
     create_runtime_scripts
     create_systemd_units
 
