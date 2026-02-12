@@ -74,6 +74,47 @@ purge_existing_installation() {
     systemctl daemon-reload
 }
 
+
+
+prompt_default_in_range() {
+    local prompt_message=$1
+    local default_value=$2
+    local min_value=$3
+    local max_value=$4
+    local user_input
+
+    while true; do
+        read -r -p "$prompt_message [$default_value]: " user_input
+
+        if [[ -z "$user_input" ]]; then
+            echo "$default_value"
+            return
+        fi
+
+        if [[ "$user_input" =~ ^[0-9]+$ ]] && (( user_input >= min_value && user_input <= max_value )); then
+            echo "$user_input"
+            return
+        fi
+
+        echo "Invalid value. Enter a number between $min_value and $max_value, or press Enter for default."
+    done
+}
+
+configure_beep_tone_settings() {
+    local default_sleep_beeps=${1:-1}
+    local default_wake_beeps=${2:-2}
+    local default_tone_freq=${3:-1200}
+    local default_beep_duration=${4:-250}
+    local default_beep_delay=${5:-100}
+
+    echo "Press Enter to accept defaults."
+
+    sleep_beeps=$(prompt_default_in_range "How many beeps on sleep (0-5)?" "$default_sleep_beeps" 0 5)
+    wake_beeps=$(prompt_default_in_range "How many beeps on wake (0-5)?" "$default_wake_beeps" 0 5)
+    tone_freq=$(prompt_default_in_range "Enter beep frequency in Hz (200-5000)" "$default_tone_freq" 200 5000)
+    beep_duration=$(prompt_default_in_range "Enter beep duration in ms (50-2000)" "$default_beep_duration" 50 2000)
+    beep_delay=$(prompt_default_in_range "Enter delay between beeps in ms (10-2000)" "$default_beep_delay" 10 2000)
+}
 play_beep() {
     local freq=$1
     local duration=$2
@@ -212,8 +253,8 @@ install_actions() {
 
     sleep_beeps=0
     wake_beeps=0
-    tone_freq=1000
-    beep_duration=300
+    tone_freq=1200
+    beep_duration=250
     beep_delay=100
 
     if read -r -p "Do you want beep notifications? (Y/N) " reply && [[ "$reply" =~ ^[Yy]$ ]]; then
@@ -222,12 +263,7 @@ install_actions() {
             apt-get update && apt-get install -y beep
         fi
 
-        read -r -p "How many beeps on sleep (0-5)? " sleep_beeps
-        read -r -p "How many beeps on wake (0-5)? " wake_beeps
-        read -r -p "Enter the beep frequency (Hz, e.g. 1000): " tone_freq
-        read -r -p "Enter the beep duration (ms, e.g. 300): " beep_duration
-        read -r -p "Enter delay between beeps (10-999 ms, e.g. 100): " beep_delay
-
+        configure_beep_tone_settings 1 2 1200 250 100
         play_beep "$tone_freq" "$beep_duration" "$sleep_beeps" "$beep_delay"
     fi
 
@@ -287,11 +323,7 @@ edit_tone_time() {
     echo "Current wake beeps: $wake_beeps"
     echo "Current beep delay: $beep_delay ms"
 
-    read -r -p "Enter new sleep beeps (0-5): " sleep_beeps
-    read -r -p "Enter new wake beeps (0-5): " wake_beeps
-    read -r -p "Enter new tone frequency (Hz): " tone_freq
-    read -r -p "Enter new beep duration (ms): " beep_duration
-    read -r -p "Enter new delay between beeps (ms): " beep_delay
+    configure_beep_tone_settings "$sleep_beeps" "$wake_beeps" "$tone_freq" "$beep_duration" "$beep_delay"
 
     save_settings
     create_runtime_scripts
