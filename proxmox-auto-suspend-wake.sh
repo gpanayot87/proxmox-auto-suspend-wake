@@ -224,7 +224,7 @@ Description=Run proxmox suspend service at $suspend_time daily
 
 [Timer]
 OnCalendar=*-*-* $suspend_time:00
-Persistent=true
+Persistent=false
 Unit=proxmox-suspend.service
 
 [Install]
@@ -232,6 +232,8 @@ WantedBy=timers.target
 EOF_TIMER
 
     systemctl daemon-reload
+    systemctl stop proxmox-suspend.service >/dev/null 2>&1 || true
+    systemctl reset-failed proxmox-suspend.service >/dev/null 2>&1 || true
     systemctl enable --now proxmox-suspend.timer
 }
 

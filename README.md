@@ -32,7 +32,7 @@ Then choose **Proceed with the install** and follow prompts.
 ## Notes
 
 - Wake beep is implemented with a `system-sleep` post hook (runs on resume), which is more reliable than starting a service only at install time.
-- The timer is enabled; the suspend service itself is not started immediately during install.
+- The timer is enabled; the suspend service itself is not started immediately during install, and missed runs are not replayed on first install (no immediate catch-up suspend).
 
 ## Requirements
 
