@@ -4,7 +4,8 @@ This script automates suspending your Proxmox node at a scheduled time, sets an 
 
 ## Features
 
-- **Automated suspend and wake** with daily schedule.
+- **Automated suspend and wake** with weekday schedule plus optional weekend override.
+- **Weekend override schedule** lets you use different suspend/wake times for Saturday/Sunday.
 - **RTC wake alarm** is recalculated every suspend run so wake always targets the next valid day/time.
 - **Optional beep notifications** for both pre-suspend and post-resume.
 - **Interactive management menu** to install, remove, and update timings/settings.
@@ -19,7 +20,7 @@ Run as root on your Proxmox node:
 bash proxmox-auto-suspend-wake.sh
 ```
 
-Then choose **Proceed with the install** and follow prompts.
+Then choose **Proceed with the install** and follow prompts for weekday schedule and optional weekend override.
 
 ## What gets created
 

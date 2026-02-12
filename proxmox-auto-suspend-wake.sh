@@ -22,6 +22,25 @@ validate_time() {
     [[ "$1" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]
 }
 
+prompt_default_time() {
+    local prompt_message=$1
+    local default_value=$2
+    local user_input
+
+    while true; do
+        read -r -p "$prompt_message [$default_value]: " user_input
+        if [[ -z "$user_input" ]]; then
+            echo "$default_value"
+            return
+        fi
+        if validate_time "$user_input"; then
+            echo "$user_input"
+            return
+        fi
+        echo "Invalid time format. Use HH:MM (24-hour) or press Enter for default."
+    done
+}
+
 load_settings() {
     if [[ -f "$SETTINGS_FILE" ]]; then
         # shellcheck disable=SC1090
@@ -30,10 +49,14 @@ load_settings() {
 
     suspend_time="${suspend_time:-23:00}"
     wake_time="${wake_time:-07:00}"
+    weekend_enabled="${weekend_enabled:-0}"
+    weekend_suspend_time="${weekend_suspend_time:-$suspend_time}"
+    weekend_wake_time="${weekend_wake_time:-$wake_time}"
+
     sleep_beeps="${sleep_beeps:-0}"
     wake_beeps="${wake_beeps:-0}"
-    tone_freq="${tone_freq:-1000}"
-    beep_duration="${beep_duration:-300}"
+    tone_freq="${tone_freq:-1200}"
+    beep_duration="${beep_duration:-250}"
     beep_delay="${beep_delay:-100}"
 }
 
@@ -41,6 +64,9 @@ save_settings() {
     cat > "$SETTINGS_FILE" <<EOF_SETTINGS
 suspend_time=$suspend_time
 wake_time=$wake_time
+weekend_enabled=$weekend_enabled
+weekend_suspend_time=$weekend_suspend_time
+weekend_wake_time=$weekend_wake_time
 sleep_beeps=$sleep_beeps
 wake_beeps=$wake_beeps
 tone_freq=$tone_freq
@@ -73,8 +99,6 @@ purge_existing_installation() {
 
     systemctl daemon-reload
 }
-
-
 
 prompt_default_in_range() {
     local prompt_message=$1
@@ -115,6 +139,44 @@ configure_beep_tone_settings() {
     beep_duration=$(prompt_default_in_range "Enter beep duration in ms (50-2000)" "$default_beep_duration" 50 2000)
     beep_delay=$(prompt_default_in_range "Enter delay between beeps in ms (10-2000)" "$default_beep_delay" 10 2000)
 }
+
+configure_schedule_settings() {
+    local default_suspend_time=$1
+    local default_wake_time=$2
+    local default_weekend_enabled=$3
+    local default_weekend_suspend_time=$4
+    local default_weekend_wake_time=$5
+    local weekend_reply
+
+    echo "Configure weekday schedule (Mon-Fri). Press Enter to accept defaults."
+    suspend_time=$(prompt_default_time "Weekday suspend time (HH:MM)" "$default_suspend_time")
+    wake_time=$(prompt_default_time "Weekday wake time (HH:MM)" "$default_wake_time")
+
+    while true; do
+        if [[ "$default_weekend_enabled" == "1" ]]; then
+            read -r -p "Use different weekend schedule? (Y/N) [Y]: " weekend_reply
+            weekend_reply=${weekend_reply:-Y}
+        else
+            read -r -p "Use different weekend schedule? (Y/N) [N]: " weekend_reply
+            weekend_reply=${weekend_reply:-N}
+        fi
+
+        if [[ "$weekend_reply" =~ ^[Yy]$ ]]; then
+            weekend_enabled=1
+            weekend_suspend_time=$(prompt_default_time "Weekend suspend time (HH:MM)" "$default_weekend_suspend_time")
+            weekend_wake_time=$(prompt_default_time "Weekend wake time (HH:MM)" "$default_weekend_wake_time")
+            break
+        elif [[ "$weekend_reply" =~ ^[Nn]$ ]]; then
+            weekend_enabled=0
+            weekend_suspend_time="$suspend_time"
+            weekend_wake_time="$wake_time"
+            break
+        else
+            echo "Invalid response. Enter Y or N."
+        fi
+    done
+}
+
 play_beep() {
     local freq=$1
     local duration=$2
@@ -158,6 +220,9 @@ SETTINGS_FILE="/usr/local/bin/proxmox-auto-suspend-wake.settings"
 # shellcheck disable=SC1090
 source "$SETTINGS_FILE"
 
+weekend_enabled="${weekend_enabled:-0}"
+weekend_wake_time="${weekend_wake_time:-$wake_time}"
+
 if (( sleep_beeps > 0 )) && command -v beep >/dev/null 2>&1; then
     for ((i = 0; i < sleep_beeps; i++)); do
         beep -f "$tone_freq" -l "$beep_duration"
@@ -166,9 +231,26 @@ if (( sleep_beeps > 0 )) && command -v beep >/dev/null 2>&1; then
 fi
 
 now_epoch=$(date +%s)
-wake_epoch=$(date -d "today ${wake_time}" +%s)
-if (( wake_epoch <= now_epoch )); then
-    wake_epoch=$(date -d "tomorrow ${wake_time}" +%s)
+today_dow=$(date +%u)
+tomorrow_dow=$(date -d tomorrow +%u)
+
+if (( weekend_enabled == 1 )) && (( today_dow == 6 || today_dow == 7 )); then
+    wake_today_time="$weekend_wake_time"
+else
+    wake_today_time="$wake_time"
+fi
+
+if (( weekend_enabled == 1 )) && (( tomorrow_dow == 6 || tomorrow_dow == 7 )); then
+    wake_tomorrow_time="$weekend_wake_time"
+else
+    wake_tomorrow_time="$wake_time"
+fi
+
+wake_today_epoch=$(date -d "today ${wake_today_time}" +%s)
+if (( wake_today_epoch > now_epoch )); then
+    wake_epoch=$wake_today_epoch
+else
+    wake_epoch=$(date -d "tomorrow ${wake_tomorrow_time}" +%s)
 fi
 
 echo 0 > /sys/class/rtc/rtc0/wakealarm
@@ -220,16 +302,29 @@ EOF_SERVICE
 
     cat > "$SUSPEND_TIMER" <<EOF_TIMER
 [Unit]
-Description=Run proxmox suspend service at $suspend_time daily
+Description=Run proxmox suspend service based on configured schedule
 
 [Timer]
-OnCalendar=*-*-* $suspend_time:00
 Persistent=false
 Unit=proxmox-suspend.service
+EOF_TIMER
+
+    if [[ "$weekend_enabled" == "1" ]]; then
+        cat >> "$SUSPEND_TIMER" <<EOF_TIMER_WEEKEND
+OnCalendar=Mon..Fri *-*-* $suspend_time:00
+OnCalendar=Sat,Sun *-*-* $weekend_suspend_time:00
+EOF_TIMER_WEEKEND
+    else
+        cat >> "$SUSPEND_TIMER" <<EOF_TIMER_DAILY
+OnCalendar=*-*-* $suspend_time:00
+EOF_TIMER_DAILY
+    fi
+
+    cat >> "$SUSPEND_TIMER" <<'EOF_TIMER_END'
 
 [Install]
 WantedBy=timers.target
-EOF_TIMER
+EOF_TIMER_END
 
     systemctl daemon-reload
     systemctl stop proxmox-suspend.service >/dev/null 2>&1 || true
@@ -241,17 +336,7 @@ install_actions() {
     clear_screen
     echo "Starting the installation process..."
 
-    while true; do
-        read -r -p "Please enter the suspend time (HH:MM): " suspend_time
-        validate_time "$suspend_time" && break
-        echo "Invalid time format. Please use HH:MM (24-hour)."
-    done
-
-    while true; do
-        read -r -p "Please enter the wake up time (HH:MM): " wake_time
-        validate_time "$wake_time" && break
-        echo "Invalid time format. Please use HH:MM (24-hour)."
-    done
+    configure_schedule_settings "23:00" "07:00" "0" "23:00" "08:30"
 
     sleep_beeps=0
     wake_beeps=0
@@ -274,7 +359,12 @@ install_actions() {
     create_runtime_scripts
     create_systemd_units
 
-    echo "System configured for automatic suspend at $suspend_time and wake at $wake_time."
+    if [[ "$weekend_enabled" == "1" ]]; then
+        echo "Configured weekday suspend/wake: $suspend_time / $wake_time"
+        echo "Configured weekend suspend/wake: $weekend_suspend_time / $weekend_wake_time"
+    else
+        echo "Configured daily suspend/wake: $suspend_time / $wake_time"
+    fi
 }
 
 remove_actions() {
@@ -294,25 +384,21 @@ update_times() {
     clear_screen
     load_settings
 
-    echo "Current suspend time: $suspend_time"
-    echo "Current wake time: $wake_time"
-
-    read -r -p "Enter new suspend time (HH:MM): " new_suspend_time
-    read -r -p "Enter new wake-up time (HH:MM): " new_wake_time
-
-    if ! validate_time "$new_suspend_time" || ! validate_time "$new_wake_time"; then
-        echo "Invalid time format. Please use HH:MM."
-        return
+    echo "Current weekday suspend/wake: $suspend_time / $wake_time"
+    if [[ "$weekend_enabled" == "1" ]]; then
+        echo "Current weekend suspend/wake: $weekend_suspend_time / $weekend_wake_time"
+    else
+        echo "Current weekend schedule: same as weekday"
     fi
 
-    suspend_time="$new_suspend_time"
-    wake_time="$new_wake_time"
+    configure_schedule_settings "$suspend_time" "$wake_time" "$weekend_enabled" "$weekend_suspend_time" "$weekend_wake_time"
+
     save_settings
     purge_existing_installation true
     create_runtime_scripts
     create_systemd_units
 
-    echo "Times updated successfully."
+    echo "Schedule updated successfully."
 }
 
 edit_tone_time() {
@@ -341,8 +427,14 @@ see_status() {
 
     echo "------------------------------------"
     echo "Suspend Timer Status: ${timer_status:-unknown}"
-    echo "Suspend Time: $suspend_time"
-    echo "Wake Time: $wake_time"
+    echo "Weekday Suspend Time: $suspend_time"
+    echo "Weekday Wake Time: $wake_time"
+    if [[ "$weekend_enabled" == "1" ]]; then
+        echo "Weekend Suspend Time: $weekend_suspend_time"
+        echo "Weekend Wake Time: $weekend_wake_time"
+    else
+        echo "Weekend Schedule: Same as weekday"
+    fi
     echo "Tone Frequency: $tone_freq Hz"
     echo "Beep Duration: $beep_duration ms"
     echo "Sleep Beeps: $sleep_beeps"
